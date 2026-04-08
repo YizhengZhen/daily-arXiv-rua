@@ -7,6 +7,9 @@ const ThemeManager = {
         SYSTEM: 'system'
     },
     
+    // Current theme state
+    currentTheme: null,
+    
     // Theme icon SVGs
     ICONS: {
         LIGHT: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -33,6 +36,7 @@ const ThemeManager = {
             this.currentTheme = savedTheme;
         } else if (savedTheme === this.THEMES.SYSTEM) {
             this.currentTheme = prefersDark ? this.THEMES.DARK : this.THEMES.LIGHT;
+            localStorage.setItem('theme', this.THEMES.SYSTEM);
         } else {
             // Default to system preference
             this.currentTheme = prefersDark ? this.THEMES.DARK : this.THEMES.LIGHT;
@@ -44,7 +48,13 @@ const ThemeManager = {
     setupEventListeners() {
         const themeToggle = document.getElementById('themeToggle');
         if (themeToggle) {
-            themeToggle.addEventListener('click', () => this.toggleTheme());
+            console.log('Setting up theme toggle event listener');
+            themeToggle.addEventListener('click', () => {
+                console.log('Theme toggle button clicked');
+                this.toggleTheme();
+            });
+        } else {
+            console.error('Theme toggle button not found!');
         }
         
         // Listen for system theme changes
@@ -59,31 +69,33 @@ const ThemeManager = {
     
     // Toggle between light and dark themes
     toggleTheme() {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        console.log('toggleTheme called, currentTheme:', this.currentTheme);
         const savedTheme = localStorage.getItem('theme');
+        console.log('savedTheme from localStorage:', savedTheme);
         
-        if (savedTheme === this.THEMES.SYSTEM) {
-            // System -> Light/Dark based on current state
-            if (this.currentTheme === this.THEMES.LIGHT) {
-                this.currentTheme = this.THEMES.DARK;
-                localStorage.setItem('theme', this.THEMES.DARK);
-            } else {
-                this.currentTheme = this.THEMES.LIGHT;
-                localStorage.setItem('theme', this.THEMES.LIGHT);
-            }
-        } else if (savedTheme === this.THEMES.DARK) {
+        // Simple cycle: LIGHT -> DARK -> SYSTEM -> LIGHT...
+        if (!savedTheme || savedTheme === this.THEMES.SYSTEM) {
+            // Currently on SYSTEM, switch to LIGHT
             this.currentTheme = this.THEMES.LIGHT;
             localStorage.setItem('theme', this.THEMES.LIGHT);
         } else if (savedTheme === this.THEMES.LIGHT) {
+            // Currently on LIGHT, switch to DARK
+            this.currentTheme = this.THEMES.DARK;
+            localStorage.setItem('theme', this.THEMES.DARK);
+        } else if (savedTheme === this.THEMES.DARK) {
+            // Currently on DARK, switch to SYSTEM
             this.currentTheme = this.THEMES.SYSTEM;
             localStorage.setItem('theme', this.THEMES.SYSTEM);
+            // For SYSTEM mode, set currentTheme based on system preference
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             this.currentTheme = prefersDark ? this.THEMES.DARK : this.THEMES.LIGHT;
         } else {
-            // Default case
-            this.currentTheme = this.currentTheme === this.THEMES.LIGHT ? this.THEMES.DARK : this.THEMES.LIGHT;
-            localStorage.setItem('theme', this.currentTheme);
+            // Fallback: default to LIGHT
+            this.currentTheme = this.THEMES.LIGHT;
+            localStorage.setItem('theme', this.THEMES.LIGHT);
         }
         
+        console.log('new theme:', this.currentTheme, 'saved as:', localStorage.getItem('theme'));
         this.applyTheme();
     },
     
@@ -128,9 +140,27 @@ const ThemeManager = {
     }
 };
 
-// Initialize theme manager when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => ThemeManager.init());
-} else {
-    ThemeManager.init();
-}
+// Initialize theme manager
+(function() {
+    console.log('ThemeManager script loaded, readyState:', document.readyState);
+    
+    // Use a timeout to ensure DOM is fully ready and other scripts are loaded
+    function initializeTheme() {
+        console.log('Initializing theme manager...');
+        if (typeof ThemeManager !== 'undefined') {
+            ThemeManager.init();
+            console.log('ThemeManager initialized successfully');
+        } else {
+            console.error('ThemeManager is not defined!');
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeTheme);
+        console.log('Waiting for DOMContentLoaded to initialize theme');
+    } else {
+        // If DOM is already loaded, wait a tiny bit to ensure other scripts are ready
+        setTimeout(initializeTheme, 100);
+        console.log('DOM already loaded, scheduling theme initialization');
+    }
+})();
