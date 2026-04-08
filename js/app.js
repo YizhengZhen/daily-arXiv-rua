@@ -1596,3 +1596,247 @@ function togglePdfSize(button) {
     });
   }
 }
+
+// ============================================
+// 论文排序功能实现
+// ============================================
+
+// 当前排序方式
+let currentSortMethod = 'default';
+
+// 初始化排序功能
+function initSorting() {
+  const sortSelect = document.getElementById('sortSelect');
+  if (!sortSelect) return;
+  
+  // 加载保存的排序偏好
+  const savedSort = localStorage.getItem('paperSortMethod');
+  if (savedSort) {
+    currentSortMethod = savedSort;
+    sortSelect.value = savedSort;
+  }
+  
+  // 监听排序选择变化
+  sortSelect.addEventListener('change', function(e) {
+    currentSortMethod = e.target.value;
+    localStorage.setItem('paperSortMethod', currentSortMethod);
+    applySorting();
+  });
+  
+  // 初始排序
+  applySorting();
+}
+
+// 应用排序
+function applySorting() {
+  if (!currentFilteredPapers || currentFilteredPapers.length === 0) return;
+  
+  // 创建副本，避免修改原始数组
+  const papersToSort = [...currentFilteredPapers];
+  
+  switch (currentSortMethod) {
+    case 'date_desc':
+      sortByDateDesc(papersToSort);
+      break;
+    case 'date_asc':
+      sortByDateAsc(papersToSort);
+      break;
+    case 'relevance':
+      sortByRelevance(papersToSort);
+      break;
+    case 'random':
+      sortRandom(papersToSort);
+      break;
+    case 'default':
+    default:
+      sortDefault(papersToSort);
+      break;
+  }
+  
+  // 更新当前过滤后的论文列表
+  currentFilteredPapers = papersToSort;
+  
+  // 重新渲染论文
+  originalRenderPapers();
+}
+
+// 按日期降序排序（最新在前）
+function sortByDateDesc(papers) {
+  papers.sort((a, b) => {
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
+    return dateB - dateA;
+  });
+}
+
+// 按日期升序排序（最旧在前）
+function sortByDateAsc(papers) {
+  papers.sort((a, b) => {
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
+    return dateA - dateB;
+  });
+}
+
+// 按相关性排序（匹配的论文在前）
+function sortByRelevance(papers) {
+  papers.sort((a, b) => {
+    // 如果论文有匹配标记，则优先显示
+    const aMatched = a.isMatched ? 1 : 0;
+    const bMatched = b.isMatched ? 1 : 0;
+    
+    if (aMatched !== bMatched) {
+      return bMatched - aMatched;
+    }
+    
+    // 如果没有匹配标记，则按日期降序（最新在前）
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
+    return dateB - dateA;
+  });
+}
+
+// 随机排序
+function sortRandom(papers) {
+  // Fisher-Yates shuffle 算法
+  for (let i = papers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [papers[i], papers[j]] = [papers[j], papers[i]];
+  }
+}
+
+// 默认排序（保持原有逻辑）
+function sortDefault(papers) {
+  // 如果有文本搜索，保持现有排序逻辑
+  if (textSearchQuery && textSearchQuery.trim().length > 0) {
+    papers.sort((a, b) => {
+      const hayA = [
+        a.title,
+        a.authors,
+        Array.isArray(a.category) ? a.category.join(', ') : a.category,
+        a.summary,
+        a.details || '',
+        a.motivation || '',
+        a.method || '',
+        a.result || '',
+        a.conclusion || ''
+      ].join(' ').toLowerCase();
+      const hayB = [
+        b.title,
+        b.authors,
+        Array.isArray(b.category) ? b.category.join(', ') : b.category,
+        b.summary,
+        b.details || '',
+        b.motivation || '',
+        b.method || '',
+        b.result || '',
+        b.conclusion || ''
+      ].join(' ').toLowerCase();
+      const q = textSearchQuery.toLowerCase();
+      const am = hayA.includes(q);
+      const bm = hayB.includes(q);
+      if (am && !bm) return -1;
+      if (!am && bm) return 1;
+      return 0;
+    });
+  } else if (activeKeywords.length > 0 || activeAuthors.length > 0) {
+    // 如果有关键词或作者过滤，保持现有排序逻辑
+    papers.sort((a, b) => {
+      const aMatchesKeyword = activeKeywords.length > 0 ? 
+        activeKeywords.some(keyword => {
+          const searchText = `${a.title} ${a.summary}`.toLowerCase();
+          return searchText.includes(keyword.toLowerCase());
+        }) : false;
+        
+      const aMatchesAuthor = activeAuthors.length > 0 ?
+        activeAuthors.some(author => {
+          return a.authors.toLowerCase().includes(author.toLowerCase());
+        }) : false;
+        
+      const bMatchesKeyword = activeKeywords.length > 0 ?
+        activeKeywords.some(keyword => {
+          const searchText = `${b.title} ${b.summary}`.toLowerCase();
+          return searchText.includes(keyword.toLowerCase());
+        }) : false;
+        
+      const bMatchesAuthor = activeAuthors.length > 0 ?
+        activeAuthors.some(author => {
+          return b.authors.toLowerCase().includes(author.toLowerCase());
+        }) : false;
+      
+      const aMatches = aMatchesKeyword || aMatchesAuthor;
+      const bMatches = bMatchesKeyword || bMatchesAuthor;
+      
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+      
+      // 如果匹配状态相同，按日期降序（最新在前）
+      const dateA = parseDate(a.date);
+      const dateB = parseDate(b.date);
+      return dateB - dateA;
+    });
+  } else {
+    // 默认按日期降序（最新在前）
+    sortByDateDesc(papers);
+  }
+}
+
+// 解析日期字符串为Date对象
+function parseDate(dateString) {
+  if (!dateString) return new Date(0);
+  
+  // 尝试多种日期格式
+  const formats = [
+    /(\d{4})-(\d{2})-(\d{2})/, // YYYY-MM-DD
+    /(\d{4})年(\d{1,2})月(\d{1,2})日/, // YYYY年MM月DD日
+    /(\d{1,2})\/(\d{1,2})\/(\d{4})/, // MM/DD/YYYY
+  ];
+  
+  for (const format of formats) {
+    const match = dateString.match(format);
+    if (match) {
+      if (format === formats[0]) {
+        // YYYY-MM-DD
+        return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+      } else if (format === formats[1]) {
+        // YYYY年MM月DD日
+        return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+      } else if (format === formats[2]) {
+        // MM/DD/YYYY
+        return new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
+      }
+    }
+  }
+  
+  // 如果无法解析，返回一个很旧的日期
+  return new Date(0);
+}
+
+// ============================================
+// RSS Feed 支持功能
+// ============================================
+
+// RSS Feed 功能将在后续版本中实现
+// 预留函数接口
+function initRssFeed() {
+  // 将在后续版本中实现RSS Feed功能
+  console.log('RSS Feed功能将在后续版本中实现');
+}
+
+// 初始化排序功能（在DOM加载完成后调用）
+document.addEventListener('DOMContentLoaded', function() {
+  // 初始化排序功能
+  initSorting();
+  
+  // 监听数据加载完成事件
+  document.addEventListener('dataLoaded', function() {
+    applySorting();
+  });
+});
+
+// 监听论文渲染完成事件，确保排序在数据加载后生效
+const originalRenderPapers = renderPapers;
+renderPapers = function() {
+  applySorting();
+  return originalRenderPapers.apply(this, arguments);
+};
